@@ -42,21 +42,21 @@ static int winrows, wincols;
  * add the line to the last line of wout
  * older lines should scroll up automatically */
 static void printline(const char *date, const char *time, const char *nick, const char *mesg) {
-    wattron(wout, COLOR_PAIR(SEPARATOR));
+    if (has_colors() == TRUE) wattron(wout, COLOR_PAIR(SEPARATOR));
     wprintw(wout, "\n%s %s ", date, time);
-    wattroff(wout, COLOR_PAIR(SEPARATOR));
+    if (has_colors() == TRUE) wattroff(wout, COLOR_PAIR(SEPARATOR));
 
-    wattron(wout, COLOR_PAIR(NICK));
+    if (has_colors() == TRUE) wattron(wout, COLOR_PAIR(NICK));
     wprintw(wout, "%*.*s ", NICKLEN, NICKLEN, nick);
-    wattroff(wout, COLOR_PAIR(NICK));
+    if (has_colors() == TRUE) wattroff(wout, COLOR_PAIR(NICK));
 
-    wattron(wout, COLOR_PAIR(SEPARATOR));
+    if (has_colors() == TRUE) wattron(wout, COLOR_PAIR(SEPARATOR));
     wprintw(wout, "| ");
-    wattroff(wout, COLOR_PAIR(SEPARATOR));
+    if (has_colors() == TRUE) wattroff(wout, COLOR_PAIR(SEPARATOR));
 
-    wattron(wout, COLOR_PAIR(MESG));
+    if (has_colors() == TRUE) wattron(wout, COLOR_PAIR(MESG));
     wprintw(wout, "%s", mesg);
-    wattroff(wout, COLOR_PAIR(MESG));
+    if (has_colors() == TRUE) wattroff(wout, COLOR_PAIR(MESG));
 }
 
 static void readout(void) {
@@ -118,12 +118,14 @@ static void createwins(void) {
     /* start curses mode - do not buffer input */
     initscr();
     /* start color support and set up color pairs */
-    if (has_colors() == TRUE) start_color();
-    init_pair(DATETIME,  COLOR_CYAN,  COLOR_BLACK);
-    init_pair(NICK,      COLOR_GREEN, COLOR_BLACK);
-    init_pair(SEPARATOR, COLOR_CYAN,  COLOR_BLACK);
-    init_pair(MESG,      COLOR_WHITE, COLOR_BLACK);
-    init_pair(WINP,      COLOR_GREEN, COLOR_BLACK);
+    if (has_colors() == TRUE) {
+        start_color();
+        init_pair(DATETIME,  COLOR_CYAN,  COLOR_BLACK);
+        init_pair(NICK,      COLOR_GREEN, COLOR_BLACK);
+        init_pair(SEPARATOR, COLOR_CYAN,  COLOR_BLACK);
+        init_pair(MESG,      COLOR_WHITE, COLOR_BLACK);
+        init_pair(WINP,      COLOR_GREEN, COLOR_BLACK);
+    }
     /* create the windows and add contents */
     redrawall(0);
 }
