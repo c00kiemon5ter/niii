@@ -19,6 +19,8 @@
 #define NICKLEN 12
 #define ESCSYMB "/CLOSE"
 
+#define USAGE "usage: niii [-v] [-h] <path/to/ircdir/network/channel/>\n"
+
 #ifndef PATH_MAX
 #define PATH_MAX 2048
 #endif
@@ -186,14 +188,14 @@ int main(int argc, char *argv[]) {
     /* check for switches - only -v and -h are available and must be before any arguments */
     if (argv[1][0] == '-' && argv[1][2] == '\0') switch (argv[1][1]) {
         case 'v': fputs("niii - " VERSION " by c00kiemon5ter\n", stdout); exit(EXIT_SUCCESS);
-        case 'h': fputs("usage: niii [-v] [-h] <path/to/ircdir/network/channel/>\n", stdout); exit(EXIT_SUCCESS);
-        default: fputs("usage: niii [-v] [-h] <path/to/ircdir/network/channel/>\n", stderr); exit(EXIT_FAILURE);
+        case 'h': fputs(USAGE, stdout); exit(EXIT_SUCCESS);
+        default: fputs(USAGE, stderr); exit(EXIT_FAILURE);
     }
     /* check for argument - if none use the user's home dir, else use the given dir */
     switch (argc) {
         case 1: snprintf(ircdir, sizeof(ircdir), "%s/irc", pwd->pw_dir); break;
         case 2: strncpy(ircdir, argv[1], sizeof(ircdir)); break;
-        default: fputs("usage: niii [-v] [-h] <path/to/ircdir/network/channel/>\n", stderr); exit(EXIT_FAILURE);
+        default: fputs(USAGE, stderr); exit(EXIT_FAILURE);
     }
     /* check if there is indeed such a directorty */
 	if (stat(ircdir, &st) < 0 || !S_ISDIR(st.st_mode))
