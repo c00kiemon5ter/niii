@@ -18,7 +18,6 @@
 
 #define NICKLEN 12
 #define ESCSYMB "/CLOSE"
-#define SHOWBAR true
 
 #ifndef PATH_MAX
 #define PATH_MAX 2048
@@ -29,17 +28,18 @@
 #endif
 
 /* color pair identifiers - up to 8 - see man COLOR_PAIR */
-enum { DATETIME, NICK, SEPARATOR, MESG, WBAR, WINP, };
+enum { DATETIME, NICK, SEPARATOR, MESG, WINP, };
 
-WINDOW *wout, *wbar, *winp; /* output window, input window, bar window */
-FILE *out, *in;
-char ircdir[PATH_MAX];
-bool running = true;
+static WINDOW *wout, *winp;
+static FILE *out, *in;
+static char ircdir[PATH_MAX];
+static bool running = true;
+static int winrows, wincols;
 
 /* print the given line formated and colored
  * add the line to the last line of wout
  * older lines should scroll up automatically */
-void printline(const char *date, const char *time, const char *nick, const char *mesg) {
+static void printline(const char *date, const char *time, const char *nick, const char *mesg) {
     wattron(wout, COLOR_PAIR(SEPARATOR));
     wprintw(wout, "\n%s %s ", date, time);
     wattroff(wout, COLOR_PAIR(SEPARATOR));
@@ -57,7 +57,7 @@ void printline(const char *date, const char *time, const char *nick, const char 
     wattroff(wout, COLOR_PAIR(MESG));
 }
 
-void readout(void) {
+static void readout(void) {
     char *date, *time, *nick, *mesg;
     char *rawline = NULL;
     size_t len = 0;
@@ -80,80 +80,74 @@ void readout(void) {
     wrefresh(winp); /* leave cursor on input window */
 }
 
-void updatewout(void) {
+static void updatewout(void) {
     rewind(out);
-    werase(wout);
+    delwin(wout);
+    wout = newwin(winrows - 1, wincols, 0, 0);
+    scrollok(wout, true);
     readout();
 }
 
-void updatewbar(void) {
-    char *tok = strtok(ircdir, "/"), *netw = tok, *chan = NULL;
-    werase(wbar);
-    while ((tok = strtok(NULL, "/")) != NULL) {
-        netw = chan;
-        chan = tok;
-    }
-    if (has_colors() == TRUE) wattron(wbar, A_BOLD|COLOR_PAIR(WBAR));
-    wprintw(wbar, "[%s] [%s]", netw, chan);
-    if (has_colors() == TRUE) wattroff(wbar, A_BOLD|COLOR_PAIR(WBAR));
-    wrefresh(wbar);
-}
-
-void updatewinp(void) {
-    werase(winp);
-    if (has_colors() == TRUE) wattron(winp, COLOR_PAIR(WINP));
-    wprintw(winp, ">> ");
-    if (has_colors() == TRUE) wattroff(winp, COLOR_PAIR(WINP));
+static void updatewinp(void) {
+    char *prompt = NULL;
+    prompt = strrchr(ircdir, '/') + 1;
+    delwin(winp);
+    winp = newwin(1, wincols, winrows - 1, 0);
+    if (has_colors() == TRUE) wattron(winp, COLOR_PAIR(WINP)|A_BOLD);
+    wprintw(winp, "[%s] ", prompt);
+    if (has_colors() == TRUE) wattroff(winp, COLOR_PAIR(WINP)|A_BOLD);
     wrefresh(winp);
 }
 
-void updateall(void) {
+static void updateall(void) {
     updatewout();
-    if (SHOWBAR) updatewbar();
     updatewinp();
 }
 
-void createwins(void) {
+static void redrawall(int unused) {
+    (void)&unused; /* warning: unused parameter ‘unused’ [-Wunused-parameter] */
+    getmaxyx(stdscr, winrows, wincols);
+    updateall();
+    redrawwin(wout);
+    redrawwin(winp);
+}
+
+static void createwins(void) {
     /* start curses mode - do not buffer input */
     initscr();
-    cbreak();
     /* start color support and set up color pairs */
     if (has_colors() == TRUE) start_color();
     init_pair(DATETIME,  COLOR_CYAN,  COLOR_BLACK);
     init_pair(NICK,      COLOR_GREEN, COLOR_BLACK);
     init_pair(SEPARATOR, COLOR_CYAN,  COLOR_BLACK);
     init_pair(MESG,      COLOR_WHITE, COLOR_BLACK);
-    init_pair(WBAR,      COLOR_GREEN, COLOR_BLACK);
-    init_pair(WINP,      COLOR_CYAN,  COLOR_BLACK);
-    /* create the windows - wout is scrollable */
-    wout = newwin(LINES - (SHOWBAR ? 2:1), COLS, 0, 0);
-    scrollok(wout, TRUE);
-    if (SHOWBAR) wbar = newwin(1, COLS, LINES - 2, 0);
-    winp = newwin(1, COLS, LINES - 1, 0);
-    /* add contents */
-    updateall();
+    init_pair(WINP,      COLOR_GREEN, COLOR_BLACK);
+    /* create the windows and add contents */
+    redrawall(0);
 }
 
-void sendmesg(const char* mesg) {
+static void sendmesg(const char* mesg) {
     if (mesg == NULL) return;
     fprintf(in, "%s\n", mesg);
     fflush(in);
 }
 
-void readinput(void) {
+static void readinput(void) {
     char *input;
     if ((input = malloc(LINE_MAX)) == NULL)
         err(EXIT_FAILURE, "failed to allocate space for input");
 
-    wgetnstr(winp, input, LINE_MAX);
+    int r = wgetnstr(winp, input, LINE_MAX);
     updatewinp();
 
-    if (input == NULL || strlen(input) == 0) return;
-    if (strcmp(input, ESCSYMB) == 0) running = false;
+    if (r == KEY_RESIZE) redrawall(0);
+    else if (input == NULL) return;
+    else if (strlen(input) == 0) redrawall(0);
+    else if (strcmp(input, ESCSYMB) == 0) running = false;
     else sendmesg(input);
 }
 
-void openfiles(void) {
+static void openfiles(void) {
     char outfile[PATH_MAX], infile[PATH_MAX], *abspath;
 
     /* get absolute path */
@@ -173,13 +167,12 @@ void openfiles(void) {
         err(EXIT_FAILURE, "failed to open file: %s", infile);
 }
 
-void cleanup(void) {
+static void cleanup(void) {
     /* close all files */
     fclose(out);
     fclose(in);
     /* delete windows - end curses mode */
     delwin(wout);
-    if (SHOWBAR) delwin(wbar);
     delwin(winp);
     endwin();
 }
@@ -211,10 +204,7 @@ int main(int argc, char *argv[]) {
     readout(); /* read history */
     while (running) readinput();
     cleanup();
-
     // TODO: set up listeners on "out" and call readout();
-    // TODO: handle resize, or refresh - call updateall
-    // TODO: what is SIGWINCH
 
     /* all was good :] */
     return EXIT_SUCCESS;
