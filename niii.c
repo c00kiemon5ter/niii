@@ -15,6 +15,7 @@
 #include <fcntl.h>
 #include <curses.h>
 #include <locale.h>
+#include <event.h>
 
 #define NICKLEN 12
 #define ESCSYMB "/CLOSE"
@@ -157,7 +158,10 @@ static void readinput(void) {
     else sendmesg(input);
 }
 
-static void newmesg(void) {
+static void newmesg(int fd, short evtype, void *unused) {
+    (void)&fd;     /* warning: unused parameter ‘fd’     [-Wunused-parameter] */
+    (void)&evtype; /* warning: unused parameter ‘evtype’ [-Wunused-parameter] */
+    (void)&unused; /* warning: unused parameter ‘unused’ [-Wunused-parameter] */
     readout();
 }
 
@@ -172,6 +176,9 @@ int main(int argc, char *argv[]) {
     int outfd;
 	struct stat st;
     struct passwd *pwd = getpwuid(getuid());
+    struct event_config *cfg;
+    struct event_base *base;
+    struct event *watcher;
 
     if (setlocale(LC_ALL, "") == NULL)
         warn("failed to set locale");
@@ -206,13 +213,30 @@ int main(int argc, char *argv[]) {
     if ((out = fdopen(outfd, "r")) == NULL)
         err(EXIT_FAILURE, "failed to open file: %s", outfile);
 
+    /* listen for new messages on out file */
+    if ((cfg = event_config_new()) == NULL)
+        err(EXIT_FAILURE, "failed to create event loop configuration");
+    if (event_config_require_features(cfg, EV_FEATURE_FDS) == -1)
+        err(EXIT_FAILURE, "failed to configure event loop");
+    if ((base = event_base_new_with_config(cfg)) == NULL)
+        err(EXIT_FAILURE, "failed to create event base");
+    if ((watcher = event_new(base, outfd, EV_READ|EV_PERSIST, newmesg, NULL)) == NULL)
+        err(EXIT_FAILURE, "failed to create watcher for file: %s", outfile);
+    if (event_add(watcher, NULL) == -1)
+        err(EXIT_FAILURE, "failed to add watcher to pending events");
+    //if (event_base_loop(base, EVLOOP_NONBLOCK) == -1)
+    //    warn("unhandled event loop backend error");
+    //event_base_dispatch(base);
     /* start curses - create windows - read history */
     createwins();
     readout();
-    /* listen for new messages on out file */
     /* handle input */
     while (running) readinput();
     /* cleanup */
+    event_base_loopbreak(base);
+    event_free(watcher);
+    event_base_free(base);
+    event_config_free(cfg);
     destroywins();
     fclose(in);
     fclose(out);
