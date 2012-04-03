@@ -10,9 +10,9 @@ MANPREFIX = ${PREFIX}/share/man
 INCS = -I. -I/usr/include
 LIBS = -L/usr/lib -lc -lncursesw
 
-CFLAGS = -std=c99 -pedantic -Wall -Wextra -Os ${INCS} -DVERSION=\"$(VERSION)\" \
-		 -D_POSIX_C_SOURCE=200809L -D_XOPEN_SOURCE=500 # required by getline and realpath
-LDFLAGS  = -s ${LIBS}
+CFLAGS  = -std=c99 -pedantic -Wall -Wextra -Os ${INCS} -DVERSION=\"$(VERSION)\" \
+		  -D_POSIX_C_SOURCE=200809L -D_XOPEN_SOURCE=500 # required by getline and realpath
+LDFLAGS = -s ${LIBS}
 
 CC 	 = cc
 EXEC = ${NAME}

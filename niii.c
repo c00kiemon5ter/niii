@@ -19,7 +19,7 @@
 #define NICKLEN 12
 #define ESCSYMB "/CLOSE"
 
-#define USAGE "usage: niii [-v] [-h] <path/to/ircdir/network/channel/>\n"
+#define USAGE "usage: niii [-v] [-h] <path/to/ircdir/network/channel/>"
 
 #ifndef PATH_MAX
 #define PATH_MAX 2048
@@ -32,11 +32,11 @@
 /* color pair identifiers - up to 8 - see man COLOR_PAIR */
 enum { DATETIME, NICK, SEPARATOR, MESG, WINP, };
 
-static WINDOW *wout, *winp;
-static FILE *out, *in;
+static WINDOW *winp, *wout;
+static FILE *in, *out;
 static char ircdir[PATH_MAX];
-static bool running = true;
 static int winrows, wincols;
+static bool running = true;
 
 /* print the given line formated and colored
  * add the line to the last line of wout
@@ -106,8 +106,7 @@ static void updateall(void) {
     updatewinp();
 }
 
-static void redrawall(int unused) {
-    (void)&unused; /* warning: unused parameter ‘unused’ [-Wunused-parameter] */
+static void redrawall() {
     getmaxyx(stdscr, winrows, wincols);
     updateall();
     redrawwin(wout);
@@ -127,7 +126,7 @@ static void createwins(void) {
         init_pair(WINP,      COLOR_GREEN, COLOR_BLACK);
     }
     /* create the windows and add contents */
-    redrawall(0);
+    redrawall();
 }
 
 static void sendmesg(const char* mesg) {
@@ -144,72 +143,77 @@ static void readinput(void) {
     int r = wgetnstr(winp, input, LINE_MAX);
     updatewinp();
 
-    if (r == KEY_RESIZE) redrawall(0);
+    if (r == KEY_RESIZE) redrawall();
     else if (input == NULL) return;
-    else if (strlen(input) == 0) redrawall(0);
+    else if (strlen(input) == 0) redrawall();
     else if (strcmp(input, ESCSYMB) == 0) running = false;
     else sendmesg(input);
 }
 
-static void openfiles(void) {
-    char outfile[PATH_MAX], infile[PATH_MAX], *abspath;
-
-    /* get absolute path */
-    if ((abspath = realpath(ircdir, NULL)) == NULL)
-        err(EXIT_FAILURE, "could not get absolute path for directory: %s", ircdir);
-    strncpy(ircdir, abspath, sizeof(ircdir));
-    free(abspath);
-
-    /* open "out" file to read incoming messages */
-    sprintf(outfile, "%s/out", ircdir);
-    if ((out = fopen(outfile, "r")) == NULL)
-        err(EXIT_FAILURE, "failed to open file: %s", outfile);
-
-    /* open "in" file to write outgoing messages */
-    sprintf(infile, "%s/in", ircdir);
-    if ((in = fopen(infile, "w")) == NULL)
-        err(EXIT_FAILURE, "failed to open file: %s", infile);
+static void newmesg(void) {
+    //(void)&fd;     /* warning: unused parameter ‘fd’     [-Wunused-parameter] */
+    //(void)&evtype; /* warning: unused parameter ‘evtype’ [-Wunused-parameter] */
+    //(void)&unused; /* warning: unused parameter ‘unused’ [-Wunused-parameter] */
+    readout();
+    redrawall(); // FIXME : remove this
 }
 
-static void cleanup(void) {
-    /* close all files */
-    fclose(out);
-    fclose(in);
-    /* delete windows - end curses mode */
-    delwin(wout);
+static void destroywins(void) {
     delwin(winp);
+    delwin(wout);
     endwin();
 }
 
 int main(int argc, char *argv[]) {
+    char infile[PATH_MAX], outfile[PATH_MAX], *abspath;
+    int outfd;
 	struct stat st;
     struct passwd *pwd = getpwuid(getuid());
 
-    setlocale(LC_ALL, "");
+    if (setlocale(LC_ALL, "") == NULL)
+        warn("failed to set locale");
 
     /* check for switches - only -v and -h are available and must be before any arguments */
     if (argv[1][0] == '-' && argv[1][2] == '\0') switch (argv[1][1]) {
-        case 'v': fputs("niii - " VERSION " by c00kiemon5ter\n", stdout); exit(EXIT_SUCCESS);
-        case 'h': fputs(USAGE, stdout); exit(EXIT_SUCCESS);
-        default: fputs(USAGE, stderr); exit(EXIT_FAILURE);
+        case 'v': errx(EXIT_SUCCESS, "niii - %s - by c00kiemon5ter", VERSION);
+        case 'h': errx(EXIT_SUCCESS, "%s", USAGE);
+        default:  errx(EXIT_FAILURE, "%s", USAGE);
     }
     /* check for argument - if none use the user's home dir, else use the given dir */
     switch (argc) {
         case 1: snprintf(ircdir, sizeof(ircdir), "%s/irc", pwd->pw_dir); break;
         case 2: strncpy(ircdir, argv[1], sizeof(ircdir)); break;
-        default: fputs(USAGE, stderr); exit(EXIT_FAILURE);
+        default: errx(EXIT_FAILURE, "%s", USAGE);
     }
-    /* check if there is indeed such a directorty */
+
+    /* check if there is indeed such a directorty and get the absolute path */
 	if (stat(ircdir, &st) < 0 || !S_ISDIR(st.st_mode))
-		err(EXIT_FAILURE, "not a valid directory: %s", ircdir);
+		err(EXIT_FAILURE, "failed to find directory: %s", ircdir);
+    if ((abspath = realpath(ircdir, NULL)) == NULL)
+        err(EXIT_FAILURE, "failed to get absolute path for directory: %s", ircdir);
+    strncpy(ircdir, abspath, sizeof(ircdir));
+    free(abspath);
+    /* create the filepaths and open the files - we need to monitor the out descriptor */
+    sprintf(outfile, "%s/out", ircdir);
+    sprintf(infile, "%s/in", ircdir);
+    if ((in = fopen(infile, "w")) == NULL)
+        err(EXIT_FAILURE, "failed to open file: %s", infile);
+    if ((outfd = open(outfile, O_RDONLY)) == -1)
+        err(EXIT_FAILURE, "failed to open descriptor for file: %s", outfile);
+    if ((out = fdopen(outfd, "r")) == NULL)
+        err(EXIT_FAILURE, "failed to open file: %s", outfile);
 
-    openfiles();
+    /* start curses - create windows - read history */
     createwins();
-    readout(); /* read history */
+    readout();
+    /* listen for new messages on out file */
+    /* handle input */
     while (running) readinput();
-    cleanup();
-    // TODO: set up listeners on "out" and call readout();
-
+    /* cleanup */
+    destroywins();
+    fclose(in);
+    fclose(out);
+    close(outfd);
     /* all was good :] */
     return EXIT_SUCCESS;
 }
