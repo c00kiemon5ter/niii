@@ -15,6 +15,7 @@
 #include <fcntl.h>
 #include <curses.h>
 #include <locale.h>
+#include <ev.h>
 
 #define NICKLEN 12
 #define ESCSYMB "/CLOSE"
@@ -210,8 +211,14 @@ int main(int argc, char *argv[]) {
     createwins();
     readout();
     /* listen for new messages on out file */
+    struct ev_loop *loop = EV_DEFAULT;
+    ev_io watcher;
+    ev_io_init(&watcher, newmesg, outfd, EV_READ|EV_WRITE);
+    ev_io_start(loop, &watcher);
+    ev_run(loop, 0);
     /* handle input */
     while (running) readinput();
+    ev_break(EV_A_ EVBREAK_ALL);
     /* cleanup */
     destroywins();
     fclose(in);
