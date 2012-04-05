@@ -152,11 +152,7 @@ static void readinput(void) {
 }
 
 static void newmesg(void) {
-    //(void)&fd;     /* warning: unused parameter ‘fd’     [-Wunused-parameter] */
-    //(void)&evtype; /* warning: unused parameter ‘evtype’ [-Wunused-parameter] */
-    //(void)&unused; /* warning: unused parameter ‘unused’ [-Wunused-parameter] */
     readout();
-    redrawall(); // FIXME : remove this
 }
 
 static void destroywins(void) {
