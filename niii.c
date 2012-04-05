@@ -74,6 +74,7 @@ static void readout(void) {
             ++nick;
             nick[strlen(nick) - 1] = '\0';
         }
+        // FIXME: handle /me|ACTION , cleanup ^AACTIONmsg^A
 
         printline(date, time, nick, mesg);
     }
@@ -137,7 +138,7 @@ static void sendmesg(const char* mesg) {
 
 static void readinput(void) {
     char *input;
-    if ((input = malloc(LINE_MAX)) == NULL)
+    if ((input = calloc(1, LINE_MAX)) == NULL)
         err(EXIT_FAILURE, "failed to allocate space for input");
 
     int r = wgetnstr(winp, input, LINE_MAX);
