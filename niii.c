@@ -70,11 +70,17 @@ static void readout(void) {
         nick = strtok(NULL, " \t");
         mesg = strtok(NULL, "\n");
 
-        if (nick[0] == '<') { /* nick[strlen(nick) - 1] == '>' */
+        if (mesg[0] == '') { /* fix: 'ACTION msg' */
+            char mtmp[LINE_MAX];
+            mesg += strlen("ACTION ");
+            mesg[strlen(mesg) - 1] = '\0';
+            snprintf(mtmp, sizeof(mtmp), "%s %s", nick, mesg);
+            mesg = mtmp;
+            nick = "*\0";
+        } else if (nick[0] == '<') { /* nick[strlen(nick) - 1] == '>' */
             ++nick;
             nick[strlen(nick) - 1] = '\0';
         }
-        // FIXME: handle /me|ACTION , cleanup ^AACTIONmsg^A
 
         printline(date, time, nick, mesg);
     }
