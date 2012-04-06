@@ -15,6 +15,7 @@
 #include <fcntl.h>
 #include <curses.h>
 #include <locale.h>
+#include <sys/inotify.h>
 
 #define NICKLEN 12
 #define ESCSYMB "/CLOSE"
@@ -168,7 +169,7 @@ static void destroywins(void) {
 
 int main(int argc, char *argv[]) {
     char infile[PATH_MAX], outfile[PATH_MAX], *abspath;
-    int outfd;
+    int notifyfd, watchfd;
 	struct stat st;
     struct passwd *pwd = getpwuid(getuid());
 
@@ -196,26 +197,28 @@ int main(int argc, char *argv[]) {
     strncpy(ircdir, abspath, sizeof(ircdir));
     free(abspath);
     /* create the filepaths and open the files - we need to monitor the out descriptor */
-    sprintf(outfile, "%s/out", ircdir);
     sprintf(infile, "%s/in", ircdir);
     if ((in = fopen(infile, "w")) == NULL)
         err(EXIT_FAILURE, "failed to open file: %s", infile);
-    if ((outfd = open(outfile, O_RDONLY)) == -1)
-        err(EXIT_FAILURE, "failed to open descriptor for file: %s", outfile);
-    if ((out = fdopen(outfd, "r")) == NULL)
+    sprintf(outfile, "%s/out", ircdir);
+    if ((out = fopen(outfile, "r")) == NULL)
         err(EXIT_FAILURE, "failed to open file: %s", outfile);
 
     /* start curses - create windows - read history */
     createwins();
     readout();
     /* listen for new messages on out file */
+    if ((notifyfd = inotify_init1(IN_NONBLOCK)) == -1)
+        err(EXIT_FAILURE, "failed to create notification descriptor");
+    if ((watchfd = inotify_add_watch(notifyfd, outfile, IN_MODIFY|IN_DELETE)) == -1)
+        err(EXIT_FAILURE, "failed to create watch descriptor for file: %s", outfile);
     /* handle input */
     while (running) readinput();
     /* cleanup */
+    inotify_rm_watch(notifyfd, watchfd);
     destroywins();
     fclose(in);
     fclose(out);
-    close(outfd);
     /* all was good :] */
     return EXIT_SUCCESS;
 }
