@@ -16,6 +16,7 @@
 #include <curses.h>
 #include <locale.h>
 #include <sys/inotify.h>
+#include <sys/select.h>
 
 #define NICKLEN 12
 #define ESCSYMB "/CLOSE"
@@ -167,6 +168,40 @@ static void destroywins(void) {
     endwin();
 }
 
+void check(int notifyfd) {
+    struct inotify_event *event;
+    struct timeval time;
+    char buf[LINE_MAX];
+    fd_set rfds;
+    int ret;
+
+    /* timeout after five seconds */
+    time.tv_sec = 0;
+    time.tv_usec = 25000;
+
+    /* zero-out the fd_set */
+    FD_ZERO (&rfds);
+
+    /* add the inotify fd to the fd_set -- of course,
+     * your application will probably want to add
+     * other file descriptors here, too
+     */
+    FD_SET (notifyfd, &rfds);
+
+    ret = select (notifyfd + 1, &rfds, NULL, NULL, &time);
+    if (ret < 0)
+        perror ("select");
+    else if (!ret) /* timed out! */
+        return;
+    else if (FD_ISSET (notifyfd, &rfds)) { /* inotify events are available! */
+        int len = read(notifyfd, buf, sizeof(buf));
+        if (len < 0) return;
+        event = (struct inotify_event*)&buf[0];
+        if (event->mask & IN_MODIFY)
+            readout();
+    }
+}
+
 int main(int argc, char *argv[]) {
     char infile[PATH_MAX], outfile[PATH_MAX], *abspath;
     int notifyfd, watchfd;
@@ -213,9 +248,13 @@ int main(int argc, char *argv[]) {
     if ((watchfd = inotify_add_watch(notifyfd, outfile, IN_MODIFY|IN_DELETE)) == -1)
         err(EXIT_FAILURE, "failed to create watch descriptor for file: %s", outfile);
     /* handle input */
-    while (running) readinput();
+    while (running) {
+        check(notifyfd);
+        readinput();
+    }
     /* cleanup */
     inotify_rm_watch(notifyfd, watchfd);
+    close(notifyfd);
     destroywins();
     fclose(in);
     fclose(out);
