@@ -102,6 +102,7 @@ static void updatewinp(void) {
     prompt = strrchr(ircdir, '/') + 1;
     delwin(winp);
     winp = newwin(1, wincols, winrows - 1, 0);
+    wtimeout(winp, 1000); // FIXME not so good idea - input is lost if enter is not pressed and timeout expires
     if (has_colors() == TRUE) wattron(winp, COLOR_PAIR(WINP)|A_BOLD);
     wprintw(winp, "[%s] ", prompt);
     if (has_colors() == TRUE) wattroff(winp, COLOR_PAIR(WINP)|A_BOLD);
@@ -123,6 +124,7 @@ static void redrawall() {
 static void createwins(void) {
     /* start curses mode - do not buffer input */
     initscr();
+    cbreak();
     /* start color support and set up color pairs */
     if (has_colors() == TRUE) {
         start_color();
@@ -150,15 +152,12 @@ static void readinput(void) {
     int r = wgetnstr(winp, input, LINE_MAX);
     updatewinp();
 
-    if (r == KEY_RESIZE) redrawall();
+    if (r == ERR) readout();
+    else if (r == KEY_RESIZE) redrawall();
     else if (input == NULL) return;
     else if (strlen(input) == 0) redrawall();
     else if (strcmp(input, ESCSYMB) == 0) running = false;
     else sendmesg(input);
-}
-
-static void newmesg(void) {
-    readout();
 }
 
 static void destroywins(void) {
